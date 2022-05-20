@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import threading
 from jsonpath_ng import jsonpath
 from jsonpath_ng.ext import parse
 from distutils.version import StrictVersion
 
+import http.server
+import socketserver
 import jinja2
 import json
 import sys
@@ -63,9 +66,9 @@ for json_file in args.files:
     with open(json_file) as f:
         data = json.load(f)
 
-        if StrictVersion(data['version']) >= StrictVersion("4.0"):
-            print('We don\'t know how to parse this version of SAST report')
-            sys.exit(1)
+        # if StrictVersion(data['version']) >= StrictVersion("4.0"):
+        #     print('We don\'t know how to parse this version of SAST report')
+        #     sys.exit(1)
 
         vulns = jsonpath_expr.find(data)
         for vuln in vulns:
@@ -76,4 +79,22 @@ frequencies=countSeverities(vulnerabilities)
 env = jinja2.Environment(loader=jinja2.FileSystemLoader('templates'))
 template = env.get_template('vulnerability_report.html')
 rendered = template.render(vulnerabilities=vulnerabilities, frequencies=countSeverities(vulnerabilities))
-print(rendered)
+
+with open('index.html', 'w') as f:
+    f.write(rendered)
+class JunkieHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path == '/':
+            self.path = 'index.html'
+        return http.server.SimpleHTTPRequestHandler.do_GET(self)
+
+def main():
+    with socketserver.TCPServer(("", 8000), JunkieHTTPRequestHandler) as httpd:
+        print("serving at port", 8000)
+        httpd.serve_forever()
+
+server = threading.Thread(target=main)
+
+server.start()
+
+print('Done! Check out the report in your browser at http://localhost:8000')
